@@ -9,6 +9,7 @@ class WhiteSpace
     file = read_file
     @tokenizer = Tokenizer.new(file)
     tokens = @tokenizer.execute
+    STDOUT << tokens
     @parser = Parser.new(tokens)
     @parser.evaluate
   end
@@ -48,10 +49,7 @@ class Tokenizer
         # コマンドの引数の解析実行
         params = tokenize_params_push(cmd)
         # 結果を配列に格納
-        result << [imp, cmd]
-        unless params.nil?
-          result << [imp, cmd, params]
-        end
+        result << [imp, cmd, params]
       end
     # エラーが発生した場合はエラーを表示
     rescue => e
@@ -209,8 +207,8 @@ class Tokenizer
     unless @scanner.scan(/\A([ \t]+\n)/)
       raise "Invalid PARAMS: pattern unmatched"
     end
-    # トークンをtsn => 2進数変換 => 10進数変換して返す
-    convert_to_binary(convert_to_tsn(@scanner.matched))
+    # トークン => 2進数変換
+    convert_to_binary(@scanner.matched)
   end
 
   # tsn形式に変換する
@@ -220,7 +218,7 @@ class Tokenizer
 
   # tsn形式を2進数に変換 (s => 0, t => 1, n => 削除)
   def convert_to_binary(token)
-    token.gsub(/s/, "0").gsub(/t/, "1").gsub(/n/, "")
+    token.gsub(/ /, "0").gsub(/\t/, "1").gsub(/\n/, "")
   end
 
   # コメントを削除
@@ -255,7 +253,6 @@ class Parser
       loop do
         imp, cmd, params = @tokens[@pc]
         @pc += 1
-        STDOUT << "#{imp} #{cmd} #{params}\n"
         self.send("execute_#{imp}", cmd, params)
       end
   end
@@ -351,13 +348,19 @@ class Parser
   def execute_io(cmd, params)
     case cmd
     when :print_char
-      STDOUT <<  convert_to_string(@stack.pop)
+      STDOUT << convert_to_decimal(@stack.pop).chr
     when :print_num
-      STDOUT <<  convert_to_decimal(@stack.pop)
+      STDOUT << convert_to_decimal(@stack.pop)
     when :read_char
-      @stack.push(STDIN.getc)
+      @heap[@stack.pop] = "0#{STDIN.getc.ord.to_s(2)}"
     when :read_num
-      @stack.push(STDIN.gets.to_i)
+      input = STDIN.gets.to_i
+      @heap[@stack.pop] = if input.negative?
+                      input = -input
+                      "1#{input.to_s(2)}"
+                    else
+                      "0#{input.to_s(2)}"
+                    end
     else
       raise SyntaxError.new("Invalid syntax io: unknown command (#{cmd}) at #{@pc}")
     end
@@ -369,9 +372,9 @@ class Parser
       throw StandardError.new("Error: value is nil.")
     end
     # 先頭の符号を取得
-    sign = binary[0]
+    sign = binary.slice(0)
     # 先頭の符号を削除
-    bin = binary.slice(0)
+    bin = binary[1..]
     # 2進数を10進数に変換
     decimal = bin.to_i(2)
     # 符号を付ける
